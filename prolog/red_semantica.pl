@@ -19,23 +19,73 @@
 
 es_un(laptop,      electronica).
 es_un(smartphone,  electronica).
+es_un(tablet,      electronica).
+es_un(television,  electronica).
 es_un(camisa,      ropa).
 es_un(pantalon,    ropa).
+es_un(chaqueta,    ropa).
+es_un(zapatos,     ropa).
+es_un(silla,       hogar).
+es_un(mesa,        hogar).
+es_un(lampara,     hogar).
 es_un(electronica, producto).
 es_un(ropa,        producto).
+es_un(hogar,       producto).
 
-es_un(laptop_hp,         laptop).
-es_un(laptop_asus,       laptop).
-es_un(smartphone_sams,   smartphone).
-es_un(smartphone_xiaomi, smartphone).
-es_un(camisa_polo,       camisa).
-es_un(pantalon_jean,     pantalon).
+es_un(laptop_hp,          laptop).
+es_un(laptop_asus,        laptop).
+es_un(laptop_dell,        laptop).
+es_un(smartphone_sams,    smartphone).
+es_un(smartphone_xiaomi,  smartphone).
+es_un(smartphone_motorola, smartphone).
+es_un(tablet_ipad,        tablet).
+es_un(tablet_samsung,     tablet).
+es_un(tv_lg,              television).
+es_un(tv_sony,            television).
+es_un(camisa_polo,        camisa).
+es_un(camisa_formal,      camisa).
+es_un(pantalon_jean,      pantalon).
+es_un(pantalon_cargo,     pantalon).
+es_un(chaqueta_cuero,     chaqueta).
+es_un(chaqueta_jean,      chaqueta).
+es_un(zapatos_deportivos, zapatos).
+es_un(zapatos_formales,   zapatos).
+es_un(silla_oficina,      silla).
+es_un(mesa_comedor,       mesa).
+es_un(lampara_led,        lampara).
+
+% instancia/1 marca cada producto final del catalogo (no una
+% categoria/subtipo), para poder recorrerlos a todos y verificar
+% que cada uno tiene al menos una recomendacion.
+instancia(laptop_hp).
+instancia(laptop_asus).
+instancia(laptop_dell).
+instancia(smartphone_sams).
+instancia(smartphone_xiaomi).
+instancia(smartphone_motorola).
+instancia(tablet_ipad).
+instancia(tablet_samsung).
+instancia(tv_lg).
+instancia(tv_sony).
+instancia(camisa_polo).
+instancia(camisa_formal).
+instancia(pantalon_jean).
+instancia(pantalon_cargo).
+instancia(chaqueta_cuero).
+instancia(chaqueta_jean).
+instancia(zapatos_deportivos).
+instancia(zapatos_formales).
+instancia(silla_oficina).
+instancia(mesa_comedor).
+instancia(lampara_led).
 
 propiedad(producto,    tiene_precio).
 propiedad(electronica, requiere_electricidad).
 propiedad(laptop,      portatil).
 propiedad(smartphone,  portatil).
+propiedad(tablet,      portatil).
 propiedad(ropa,        textil).
+propiedad(hogar,       mobiliario).
 
 
 compatible(laptop,     mouse).
@@ -44,8 +94,18 @@ compatible(laptop,     audifonos).
 compatible(smartphone, funda_smartphone).
 compatible(smartphone, cargador_rapido).
 compatible(smartphone, audifonos).
+compatible(tablet,     funda_tablet).
+compatible(tablet,     teclado_bluetooth).
+compatible(television, soporte_pared).
+compatible(television, control_remoto).
 compatible(camisa,     corbata).
 compatible(pantalon,   cinturon).
+compatible(chaqueta,   bufanda).
+compatible(zapatos,    plantillas).
+compatible(silla,      cojin).
+compatible(mesa,       mantel).
+compatible(lampara,    bombilla_led).
+compatible(lampara,    cable_extension).
 
 
 
@@ -68,8 +128,6 @@ recomendar_accesorio(X, A) :-
 recomendar_accesorio(X, A) :-
     es_un_transitivo(X, Categoria),
     compatible(Categoria, A).
-
-------------------
 
 main :-
     write('=== HERENCIA TRANSITIVA DE laptop_hp ==='), nl,
@@ -94,6 +152,21 @@ main :-
     forall(
         recomendar_accesorio(smartphone_xiaomi, Accesorio2),
         (write(' - Se recomienda: '), write(Accesorio2), nl)
+    ),
+
+    write('=== ACCESORIOS RECOMENDADOS PARA silla_oficina ==='), nl,
+    forall(
+        recomendar_accesorio(silla_oficina, Accesorio3),
+        (write(' - Se recomienda: '), write(Accesorio3), nl)
+    ),
+
+    write('=== VERIFICACION: RECOMENDACIONES PARA TODO EL CATALOGO ==='), nl,
+    forall(
+        instancia(Producto),
+        (
+            findall(A, recomendar_accesorio(Producto, A), Accesorios),
+            write(' - '), write(Producto), write(' -> '), write(Accesorios), nl
+        )
     ).
 
 :- initialization(main).

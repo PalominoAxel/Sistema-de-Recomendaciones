@@ -49,12 +49,36 @@ object Main {
   // ---------- 2. CATÁLOGO DE EJEMPLO (List[Producto]) ----------
 
   val catalogo: List[Producto] = List(
+    // --- electronica: laptop ---
     Producto(1, "laptop_hp", "electronica", "laptop", 1200.0, 8),
     Producto(2, "laptop_asus", "electronica", "laptop", 950.0, 0),
-    Producto(3, "smartphone_sams", "electronica", "smartphone", 700.0, 15),
-    Producto(4, "smartphone_xiaomi", "electronica", "smartphone", 300.0, 20),
-    Producto(5, "camisa_polo", "ropa", "camisa", 25.0, 50),
-    Producto(6, "pantalon_jean", "ropa", "pantalon", 40.0, 30)
+    Producto(3, "laptop_dell", "electronica", "laptop", 1100.0, 5),
+    // --- electronica: smartphone ---
+    Producto(4, "smartphone_sams", "electronica", "smartphone", 700.0, 15),
+    Producto(5, "smartphone_xiaomi", "electronica", "smartphone", 300.0, 20),
+    Producto(6, "smartphone_motorola", "electronica", "smartphone", 450.0, 12),
+    // --- electronica: tablet ---
+    Producto(7, "tablet_ipad", "electronica", "tablet", 900.0, 10),
+    Producto(8, "tablet_samsung", "electronica", "tablet", 650.0, 0),
+    // --- electronica: television ---
+    Producto(9, "tv_lg", "electronica", "television", 1300.0, 6),
+    Producto(10, "tv_sony", "electronica", "television", 1500.0, 4),
+    // --- ropa: camisa ---
+    Producto(11, "camisa_polo", "ropa", "camisa", 25.0, 50),
+    Producto(12, "camisa_formal", "ropa", "camisa", 35.0, 25),
+    // --- ropa: pantalon ---
+    Producto(13, "pantalon_jean", "ropa", "pantalon", 40.0, 30),
+    Producto(14, "pantalon_cargo", "ropa", "pantalon", 45.0, 18),
+    // --- ropa: chaqueta ---
+    Producto(15, "chaqueta_cuero", "ropa", "chaqueta", 120.0, 7),
+    Producto(16, "chaqueta_jean", "ropa", "chaqueta", 60.0, 0),
+    // --- ropa: zapatos ---
+    Producto(17, "zapatos_deportivos", "ropa", "zapatos", 55.0, 40),
+    Producto(18, "zapatos_formales", "ropa", "zapatos", 70.0, 22),
+    // --- hogar: silla / mesa / lampara ---
+    Producto(19, "silla_oficina", "hogar", "silla", 150.0, 9),
+    Producto(20, "mesa_comedor", "hogar", "mesa", 300.0, 3),
+    Producto(21, "lampara_led", "hogar", "lampara", 20.0, 60)
   )
 
   // ---------- 3. FUNCIONES DE FILTRADO (filter) ----------
@@ -85,6 +109,8 @@ object Main {
       case ("electronica", "regular") => 0.05
       case ("ropa", "premium")        => 0.20
       case ("ropa", "regular")        => 0.10
+      case ("hogar", "premium")       => 0.10
+      case ("hogar", "regular")       => 0.03
       case (_, "nuevo")               => 0.05 // descuento de bienvenida, aplica a cualquier categoría
       case _                          => 0.0
     }
