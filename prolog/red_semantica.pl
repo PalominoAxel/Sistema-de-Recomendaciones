@@ -1,21 +1,3 @@
-% ============================================================
-% MOTOR DE RECOMENDACION PARA E-COMMERCE
-% MODULO LOGICO (PROLOG) - RED SEMANTICA E INFERENCIA
-% ------------------------------------------------------------
-% Responsabilidad de este modulo: representar el conocimiento
-% sobre el catalogo (jerarquia de productos, propiedades y
-% compatibilidades) como una Red Semantica, e inferir sobre
-% ella: herencia transitiva de categorias/propiedades y
-% recomendacion de accesorios compatibles.
-%
-% Los hechos es_un/2 marcados como "instancias del catalogo"
-% son los que, en la arquitectura completa, genera el Modulo
-% Scala 
-%
-% Compatible con GNU Prolog / OneCompiler (ejecucion por lotes
-% con main/0 e :- initialization(main)).
-% ============================================================
-
 
 es_un(laptop,      electronica).
 es_un(smartphone,  electronica).
@@ -169,4 +151,51 @@ main :-
         )
     ).
 
-:- initialization(main).
+% ------------------------------------------------------------
+% CONSULTA PARAMETRIZADA PARA INTEGRACION CON PYTHON
+% ------------------------------------------------------------
+% A diferencia de main/0 (demo fija con 3 productos), consultar/1
+% imprime el mismo tipo de informacion para UN solo producto dado
+% como parametro, en lineas "ETIQUETA:valor" faciles de parsear
+% desde Python con str.partition(':').
+consultar(Producto) :-
+    write('PRODUCTO:'), write(Producto), nl,
+    forall(
+        es_un_transitivo(Producto, Categoria),
+        (write('CATEGORIA:'), write(Categoria), nl)
+    ),
+    forall(
+        tiene_propiedad(Producto, Propiedad),
+        (write('PROPIEDAD:'), write(Propiedad), nl)
+    ),
+    forall(
+        recomendar_accesorio(Producto, Accesorio),
+        (write('ACCESORIO:'), write(Accesorio), nl)
+    ).
+
+% exportar_red/0 imprime todos los arcos de la red semantica
+% (es_un, propiedad, compatible) en lineas "TIPO:origen:destino",
+% para que el orquestador Python pueda dibujar el grafo completo.
+exportar_red :-
+    forall(es_un(X, Y),      (write('ES_UN:'), write(X), write(':'), write(Y), nl)),
+    forall(propiedad(X, P),  (write('PROPIEDAD:'), write(X), write(':'), write(P), nl)),
+    forall(compatible(X, A), (write('COMPATIBLE:'), write(X), write(':'), write(A), nl)).
+
+% entrada/0 es el punto de entrada real cuando este archivo se
+% ejecuta desde el orquestador Python (carpeta python/): si se
+% recibe un argumento de linea de comandos (despues de "--") se
+% interpreta como nombre de producto y se llama a consultar/1; si
+% no se recibe ningun argumento se preserva el comportamiento
+% original del modulo, ejecutando la demo de main/0 (para poder
+% seguir corriendo este archivo de forma independiente).
+entrada :-
+    current_prolog_flag(argv, Argv),
+    (   Argv = ['__red__'|_]
+    ->  exportar_red
+    ;   Argv = [ProductoArg|_]
+    ->  atom_string(Producto, ProductoArg),
+        consultar(Producto)
+    ;   main
+    ).
+
+:- initialization(entrada, main).

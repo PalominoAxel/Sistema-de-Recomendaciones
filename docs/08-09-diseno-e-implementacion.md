@@ -30,15 +30,20 @@ Este módulo representa el "razonamiento" del motor de recomendación: no
 calcula precios ni filtra listas, solo responde preguntas sobre relaciones
 semánticas entre conceptos.
 
-**Módulo 3 — Python (Orquestador/Integrador, diseño para fase futura)**
-Será el punto de entrada único del sistema. Su responsabilidad es
-orquestar, no calcular: recibe la solicitud del usuario (ej. "quiero
-recomendaciones para mi carrito"), invoca al módulo Scala para obtener
-precios/descuentos y hechos Prolog, invoca al módulo Prolog para obtener
-inferencias de compatibilidad, y combina ambas respuestas en el resultado
-final que se muestra al usuario. En esta entrega **solo se diseña su lugar
-en la arquitectura** (ver 8.4); su implementación se abordará en la
-integración posterior.
+**Módulo 3 — Python (Orquestador/Integrador, implementado en `python/`)**
+Es el punto de entrada único del sistema. Su responsabilidad es
+orquestar, no calcular: invoca por `subprocess` al módulo Scala (con
+`scala-cli`) para obtener el catálogo, el total del carrito de
+demostración y los hechos Prolog; prepara con esos hechos la base de
+conocimiento combinada que necesita el módulo lógico; invoca por
+`subprocess` al módulo Prolog (con `swipl`) para obtener, para el
+producto que el usuario elige en un menú interactivo, su herencia de
+categorías, propiedades y accesorios recomendados; y combina ambas
+respuestas en el resultado final que se muestra al usuario. Es también
+el módulo donde se demuestra el paradigma orientado a objetos del
+curso (clases, objetos y herencia — ver 10.3), como contraparte del
+paradigma funcional de Scala y el lógico de Prolog. El mecanismo de
+comunicación realmente implementado se describe en 8.4.
 
 ```
  ┌──────────────┐      hechos es_un/2       ┌──────────────┐
@@ -144,25 +149,59 @@ de ejecutar sus reglas de inferencia. Esto desacopla completamente ambos
 módulos: Scala no necesita saber nada de resolución lógica, y Prolog no
 necesita saber nada de precios o descuentos.
 
-**Plan de integración futura con Python:** Python actuará como
-orquestador usando `subprocess` para invocar ambos ejecutables:
+**Integración implementada con Python (`python/`):** Python actúa como
+orquestador usando `subprocess` para invocar ambos ejecutables. El flujo
+real, en `python/main.py` + `python/scala_bridge.py` +
+`python/prolog_bridge.py`:
 
-1. Ejecutar el `.jar`/script de Scala con `subprocess.run([...], capture_output=True)`
-   y capturar por **stdout** tanto el total del carrito como los hechos
-   Prolog generados.
-2. Escribir esos hechos en un archivo temporal `catalogo_generado.pl` que se
-   agrega a la base de conocimiento de `red_semantica.pl`.
-3. Ejecutar GNU Prolog con `subprocess.run(["gprolog", "--consult-file", ...])`,
-   capturando su salida estándar (los `write/1` + `nl/0` del predicado
-   `main/0`).
-4. Parsear esa salida de texto en Python y combinarla con el resultado de
-   Scala para construir la respuesta final al usuario.
+1. `MotorScala.cotizar(tipo, cliente, carrito)` corre
+   `scala-cli run scala/MotorRecomendacion.scala -- cotizar <tipo> <cliente> <id:cant>...`
+   con `subprocess.run([...], capture_output=True)`. En este modo, Scala
+   recibe por **argumentos** el tipo de cliente elegido por el usuario y
+   los productos de su carrito, y responde por **stdout** con el catálogo
+   completo, una línea `PRECIO:id:descuento:precio_final` por producto
+   (descuento obtenido por *pattern matching* para ese tipo de cliente),
+   una línea `ITEM:id:cantidad:unitario:subtotal` por ítem del carrito,
+   el `SUBTOTAL` sin descuento, el `TOTAL CARRITO` y los hechos `es_un/2`
+   generados (todo extraído con expresiones regulares). Sin argumentos,
+   Scala conserva su demo original.
+2. `MotorPrologo.construir_base_conocimiento(...)` escribe esos hechos en
+   un archivo `prolog/catalogo_generado.pl` (generado, no versionado) que
+   combina los hechos recibidos de Scala con el resto de la base de
+   conocimiento de `red_semantica.pl` — descartando de este último los
+   hechos `es_un/2` que Scala ya vuelve a generar, para no duplicarlos, y
+   conservando únicamente los 3 hechos de nivel superior
+   (`categoría -> producto`) que Scala no genera.
+3. `MotorPrologo.consultar_producto(nombre)` ejecuta
+   `swipl -q prolog/catalogo_generado.pl -- <producto>`, capturando su
+   salida estándar. Para esto, `red_semantica.pl` incorpora dos
+   predicados nuevos (no se modificó `main/0`): `consultar/1`, que
+   imprime con `write/1` + `nl/0` líneas `ETIQUETA:valor` (categorías
+   heredadas, propiedades, accesorios) para un solo producto; y
+   `entrada/0`, el punto de entrada real del archivo
+   (`:- initialization(entrada, main).`), que llama a `consultar/1` si
+   recibe un producto como argumento de línea de comandos, o conserva el
+   comportamiento original (`main/0`, la demo fija) si se ejecuta sin
+   argumentos — así el módulo Prolog sigue funcionando de forma
+   independiente, igual que en la entrega anterior.
+   Además, `exportar_red/0` (invocado con el argumento especial
+   `__red__`) imprime todos los arcos de la red (`ES_UN:x:y`,
+   `PROPIEDAD:x:p`, `COMPATIBLE:x:a`), que la interfaz web usa para
+   dibujar el grafo de la red semántica.
+4. Python parsea esa salida de texto (`str.partition(':')`) y la combina
+   con los precios y el total obtenidos de Scala para construir la
+   respuesta final al usuario, ya sea en el menú de consola
+   (`main.py`) o en la interfaz web (`app.py`).
 
-Este diseño (texto plano por `stdin`/`stdout`/archivos intermedios) se eligió
+Este diseño (texto plano por `stdout`/archivos intermedios) se eligió
 porque no requiere librerías externas ni frameworks de serialización
 complejos, manteniéndose dentro del nivel introductorio pedido, y porque es
 el mecanismo más simple de depurar: en cualquier punto se puede inspeccionar
-el archivo de hechos intermedio para verificar qué se está comunicando.
+el archivo de hechos intermedio (`prolog/catalogo_generado.pl`) para
+verificar qué se está comunicando. El ejecutable usado para el módulo
+lógico es **SWI-Prolog** (`swipl`), que es el disponible en el entorno de
+desarrollo; `red_semantica.pl` sigue siendo compatible con GNU
+Prolog/OneCompiler para su uso independiente (`main/0`).
 
 ---
 
@@ -301,3 +340,143 @@ recomendar accesorios.
    requerido por la ejecución por lotes en GNU Prolog/OneCompiler: al
    cargar el archivo, el intérprete ejecuta automáticamente `main/0` y
    termina, imprimiendo todo el resultado por salida estándar.
+
+9. **Predicado `consultar/1` y punto de entrada `entrada/0`** — Se
+   agregaron para la integración con Python (ver 8.4 y sección 10), sin
+   modificar nada de lo anterior. `consultar/1` repite el mismo tipo de
+   consultas que `main/0` (herencia transitiva, propiedades, accesorios)
+   pero para un solo producto recibido como argumento, imprimiendo cada
+   dato con una etiqueta (`CATEGORIA:`, `PROPIEDAD:`, `ACCESORIO:`) fácil
+   de parsear línea por línea. `entrada/0` decide, leyendo
+   `current_prolog_flag(argv, Argv)`, si se recibió un producto por línea
+   de comandos (llama a `consultar/1`) o no (llama a `main/0`, el
+   comportamiento original). La directiva final del archivo pasó de
+   `:- initialization(main).` a `:- initialization(entrada, main).`: la
+   forma de dos argumentos con `main` es el modismo de SWI-Prolog para
+   declarar el punto de entrada cuando el archivo se ejecuta como script
+   (`swipl red_semantica.pl -- argumento`).
+
+---
+
+## 10. IMPLEMENTACIÓN EN PYTHON (Módulo 3 — Orquestador)
+
+El código completo está en [`python/`](../python/): `base.py`,
+`scala_bridge.py`, `prolog_bridge.py`, `modelos.py`, `main.py` y `app.py`.
+Hay dos puntos de entrada, ejecutados desde la raíz del proyecto:
+
+- **Interfaz web:** `python -m streamlit run python/app.py` (requiere
+  `pip install -r python/requirements.txt`).
+- **Consola:** `python python/main.py`.
+
+### 10.1 Rol del módulo
+
+A diferencia de Scala (funcional) y Prolog (lógico), que resuelven una
+parte concreta del problema, Python no calcula precios ni infiere
+compatibilidades: **orquesta**. Ejecuta los otros dos módulos como
+procesos externos, traduce su salida de texto a datos Python, y conduce
+la interacción con el usuario. El mecanismo de comunicación entre los
+tres módulos ya se explicó en la sección 8.4; esta sección se enfoca en
+cómo el código Python demuestra, de paso, los temas del curso
+(características multiparadigma, tipos de datos, control de flujo,
+estructuras de datos, funciones, módulos, clases y herencia).
+
+### 10.2 Explicación paso a paso del código
+
+1. **`base.py` — clase `MotorExterno`** — Concentra lo que Scala y
+   Prolog necesitan por igual: localizar su ejecutable (primero en
+   rutas conocidas de instalación, luego en el `PATH`) y ejecutarlo con
+   `subprocess.run(..., capture_output=True, text=True)`. Se invoca con
+   **rutas relativas** y `cwd` fijo en la raíz del proyecto, en vez de
+   rutas absolutas, porque la carpeta del proyecto tiene una tilde
+   ("Recomendación") que algunos lanzadores nativos de Windows no
+   decodifican bien si llega como argumento de línea de comandos.
+
+2. **`scala_bridge.py` — clase `MotorScala(MotorExterno)`** (herencia) —
+   `cotizar` corre Scala en modo `cotizar` pasándole el tipo de cliente
+   y el carrito como argumentos y, con expresiones regulares (**cadenas
+   de texto**), extrae del *stdout*: la lista de `Producto(...)`, el
+   descuento y precio final de cada uno (`PRECIO:`), las líneas del
+   carrito (`ITEM:`), el subtotal, el total y los hechos `es_un(...)`.
+   Todo se devuelve en un objeto `Cotizacion`.
+
+3. **`prolog_bridge.py` — clase `MotorPrologo(MotorExterno)`** (herencia)
+   — `construir_base_conocimiento` combina los hechos de Scala con el
+   resto de `red_semantica.pl` (ver 8.4) escribiendo
+   `prolog/catalogo_generado.pl`. `consultar_producto` corre
+   `swipl -q prolog/catalogo_generado.pl -- <producto>` y parsea cada
+   línea `ETIQUETA:valor` de la salida con `str.partition(':')`,
+   acumulando los valores en un **diccionario** de **listas**.
+   `exportar_red` obtiene todos los arcos de la red como **tuplas**.
+
+4. **`modelos.py` — paradigma orientado a objetos** — `Producto`,
+   `LineaCarrito`, `Cotizacion` y `Recomendacion` son `@dataclass` (equivalente Python de las
+   `case class` de Scala). `Cliente` es la clase base de una jerarquía
+   con **herencia**: `ClienteRegular`, `ClientePremium` y `ClienteNuevo`
+   heredan de `Cliente` y sobrescriben (polimorfismo) el método
+   `beneficio()`. A propósito, esta jerarquía **no** recalcula el
+   porcentaje de descuento (eso sigue siendo responsabilidad exclusiva
+   del *pattern matching* de Scala, para no duplicar la lógica de
+   precios en dos lenguajes); solo modela, de forma orientada a
+   objetos, los distintos tipos de cliente y su beneficio asociado.
+   `CLIENTES_DISPONIBLES` es un **diccionario** que mapea la opción de
+   menú a la clase (**objeto** tipo `type`) correspondiente.
+
+5. **`main.py` — orquestación e interacción con el usuario** — Importa
+   (**módulos**) `base`, `scala_bridge`, `prolog_bridge`, `modelos` y
+   `array` de la librería estándar. `resumen_precios` usa
+   `array.array("d", ...)` — un **arreglo** de tipo fijo (double), a
+   diferencia de una lista genérica — para calcular mínimo, máximo y
+   promedio de precios con `min()`, `max()` y `sum()`. `mostrar_catalogo`
+   recorre la **lista** de productos con un bucle `for` e
+   `enumerate` (**instrucción repetitiva**), formateando cada línea con
+   f-strings (**cadenas de texto**). `elegir_cliente` usa un bucle
+   `while True` con `input()` (**ingreso de datos por teclado**) para
+   pedir el nombre y validar la opción antes de instanciar la subclase
+   de `Cliente` elegida; el `tipo` de ese objeto se envía a Scala, de
+   modo que los precios mostrados ya incluyen el descuento que le
+   corresponde. `menu_recomendaciones` es el ciclo principal: un número
+   muestra la recomendación de Prolog; `a <número>` agrega el producto a
+   un carrito (**diccionario** `{id: cantidad}`) y muestra los
+   accesorios que Prolog sugiere; `carrito` pide a Scala el total con
+   descuento (`mostrar_total`). El flujo de `main()` en sí —elegir
+   cliente, correr el pipeline, mostrar catálogo, correr el menú,
+   despedirse— es una secuencia de **instrucciones de control
+   secuenciales** con **funciones** que dividen cada responsabilidad.
+
+6. **`app.py` — interfaz web con Streamlit** — Es solo una capa visual
+   sobre los mismos puentes: no calcula precios ni infiere nada. Tiene
+   cuatro pestañas:
+   - **Catálogo:** tarjetas con precio original tachado y precio final
+     calculado por Scala, filtros por categoría, precio y stock, y un
+     botón que abre la recomendación de Prolog (herencia, propiedades,
+     accesorios y un mini-grafo del producto).
+   - **Carrito:** al agregar un producto, Prolog sugiere accesorios; el
+     total oficial lo calcula Scala (`calcularTotalCarrito`) con un botón.
+   - **Red semántica:** grafo completo exportado por Prolog
+     (`exportar_red/0`), filtrable por categoría y con el camino
+     `es_un` del producto elegido resaltado.
+   - **Cómo funciona:** diagrama de la arquitectura y los hechos que
+     Scala envía a Prolog.
+
+   Como cada llamada a Scala o Prolog es un proceso externo que tarda
+   unos segundos, las respuestas se guardan en caché (`st.cache_data`):
+   la misma entrada siempre produce la misma salida.
+
+### 10.3 Correspondencia con los temas del curso
+
+| Tema del curso | Dónde se demuestra |
+|---|---|
+| Características del lenguaje multiparadigma | Python se usa aquí como orquestador imperativo, con objetos (`modelos.py`) y con listas/funciones de estilo funcional (`enumerate`, comprensiones en `resumen_precios`), a diferencia de Scala (funcional puro) y Prolog (lógico) |
+| Tipos de datos, variables y operadores | Atributos `int`/`str`/`float`/`list` de `Producto`/`Recomendacion`; operadores aritméticos en `resumen_precios` |
+| `print()` | En todo `main.py` para mostrar catálogo, menús y resultados |
+| Ingreso de datos por teclado | `input()` en `elegir_cliente` y `menu_recomendaciones` |
+| Instrucciones de control secuenciales | Flujo de `main()`: pipeline → catálogo → cliente → menú → despedida |
+| Cadenas de texto | Expresiones regulares en `scala_bridge.py`, `str.partition`/`str.isdigit` en `prolog_bridge.py`/`main.py`, f-strings en todo el módulo |
+| Instrucciones condicionales | Validaciones de opción en `elegir_cliente` y `menu_recomendaciones`; filtro de hechos en `prolog_bridge.py` |
+| Instrucciones repetitivas | Bucles `for`/`while` en `mostrar_catalogo`, `elegir_cliente`, `menu_recomendaciones` |
+| Arreglos | `array.array("d", ...)` en `resumen_precios` |
+| Listas, tuplas y diccionarios | Catálogo como lista de `Producto`; `indice_por_numero` y `CLIENTES_DISPONIBLES` como diccionarios; resultado de `_parsear_salida` como diccionario de listas |
+| Funciones | Cada responsabilidad (`preparar_pipeline`, `mostrar_catalogo`, `elegir_cliente`, `consultar_recomendacion`, `menu_recomendaciones`) es una función con una sola tarea |
+| Módulos | `main.py` importa `base`, `scala_bridge`, `prolog_bridge`, `modelos` y la librería estándar (`array`); `app.py` además usa la librería externa `streamlit` |
+| Clases y objetos | `Producto`, `Recomendacion`, `Cliente` y las clases `MotorExterno`/`MotorScala`/`MotorPrologo` |
+| Herencia | `MotorScala`/`MotorPrologo` heredan de `MotorExterno`; `ClienteRegular`/`ClientePremium`/`ClienteNuevo` heredan de `Cliente` y sobrescriben `beneficio()` (polimorfismo) |

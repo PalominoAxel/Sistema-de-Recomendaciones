@@ -1,30 +1,3 @@
-// ============================================================
-// MOTOR DE RECOMENDACIÓN PARA E-COMMERCE
-// MÓDULO FUNCIONAL (SCALA)
-// ------------------------------------------------------------
-// Responsabilidad de este módulo: procesar el catálogo de
-// productos, filtrar/organizar datos, calcular descuentos y
-// totales de carrito, y finalmente EXPORTAR el catálogo como
-// hechos Prolog (es_un/2) para que el Módulo Lógico construya
-// sobre ellos su Red Semántica (jerarquía, propiedades y
-// compatibilidades).
-//
-// Paradigma: puramente funcional. Solo se usan:
-//   - case class (datos inmutables)
-//   - funciones declarativas y anónimas
-//   - List, Map
-//   - filter, map
-//   - pattern matching
-// No se usan: Monads, Implicits, Future, Akka, Typeclasses, var.
-//
-// Compatible con Scastie (https://scastie.scala-lang.org/)
-// ============================================================
-
-// ---------- 1. MODELO DE DATOS (case class) ----------
-
-// Representa un producto del catálogo.
-// `subtipo` es el nodo de la Red Semántica al que pertenece
-// (ej: "laptop"), y `categoria` es el nodo padre (ej: "electronica").
 case class Producto(
     id: Int,
     nombre: String, // identificador simbólico -> será un átomo Prolog, ej: "laptop_hp"
@@ -151,9 +124,55 @@ object Main {
     hechosInstancia ++ hechosJerarquia
   }
 
-  // ---------- 8. PUNTO DE ENTRADA ----------
+  // ---------- 8. COTIZACIÓN PARAMETRIZADA (integración con Python) ----------
+  // Python invoca: scala-cli run MotorRecomendacion.scala -- cotizar <tipo> <cliente> [id:cant ...]
+  // La salida usa líneas "ETIQUETA:campo:campo" fáciles de parsear y
+  // números con punto decimal (Locale.US) sin importar el idioma del SO.
 
-  def main(args: Array[String]): Unit = {
+  def num(x: Double): String = "%.2f".formatLocal(java.util.Locale.US, x)
+
+  // Convierte "3:2" en ItemCarrito(producto 3, cantidad 2). Option +
+  // pattern matching descartan entradas inválidas sin lanzar excepciones.
+  def parsearItem(texto: String): Option[ItemCarrito] =
+    texto.split(":").toList match {
+      case List(id, cant) if id.forall(_.isDigit) && cant.forall(_.isDigit) && cant.nonEmpty =>
+        catalogo.find(_.id == id.toInt).map(p => ItemCarrito(p, cant.toInt))
+      case _ => None
+    }
+
+  def cotizar(tipoCliente: String, cliente: String, textosItems: List[String]): Unit = {
+    println("=== CATÁLOGO COMPLETO ===")
+    catalogo.foreach(println)
+
+    println(s"\n=== PRECIOS PARA CLIENTE $tipoCliente (pattern matching) ===")
+    catalogo.foreach { p =>
+      val descuento = calcularDescuento(p.categoria, tipoCliente)
+      println(s"PRECIO:${p.id}:${num(descuento)}:${num(precioConDescuento(p, tipoCliente))}")
+    }
+
+    val carrito = Carrito(cliente, tipoCliente, textosItems.flatMap(parsearItem))
+    println(s"\n=== CARRITO DE ${carrito.cliente} ===")
+    carrito.items.foreach { item =>
+      val unitario = precioConDescuento(item.producto, tipoCliente)
+      println(s"ITEM:${item.producto.id}:${item.cantidad}:${num(unitario)}:${num(unitario * item.cantidad)}")
+    }
+    val totalSinDescuento = carrito.items.map(i => i.producto.precio * i.cantidad).sum
+    println(s"SUBTOTAL:${num(totalSinDescuento)}")
+    println(s"TOTAL CARRITO: $$${num(calcularTotalCarrito(carrito))}")
+
+    println("\n=== HECHOS PROLOG GENERADOS (salida para el Módulo Lógico) ===")
+    generarHechosProlog(catalogo).foreach(println)
+  }
+
+  // ---------- 9. PUNTO DE ENTRADA ----------
+
+  def main(args: Array[String]): Unit = args.toList match {
+    case "cotizar" :: tipo :: cliente :: items => cotizar(tipo, cliente, items)
+    case _                                     => demo()
+  }
+
+  // Demo original (sin argumentos): muestra cada técnica funcional por separado.
+  def demo(): Unit = {
 
     println("=== CATÁLOGO COMPLETO ===")
     catalogo.foreach(println)
@@ -173,7 +192,7 @@ object Main {
       tipoCliente = "premium",
       items = List(
         ItemCarrito(catalogo(0), 1), // laptop_hp x1
-        ItemCarrito(catalogo(4), 2)  // camisa_polo x2
+        ItemCarrito(catalogo(10), 2) // camisa_polo x2
       )
     )
     println(s"Cliente: ${carrito.cliente} (${carrito.tipoCliente})")

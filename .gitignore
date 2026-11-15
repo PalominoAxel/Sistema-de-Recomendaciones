@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+prolog/catalogo_generado.pl
+.scala-build/
+.bsp/
+.metals/
+.vscode/
+project/.bloop/
